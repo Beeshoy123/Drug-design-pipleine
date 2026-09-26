@@ -51,6 +51,8 @@ install, uvicorn on port 8080 as the dev server).
 - ✅ **Environments installed** → `.venv-reinvent` + `.venv-aizynth` (Python 3.12, CPU torch), recreate with `sh ./scripts/setup_envs.sh` — both tools verified working
 - ✅ **GenUI evaluated** → cloned as design reference only, not run — see [`docs/Genui_NOTES.md`](docs/Genui_NOTES.md); RDKit SVG previews verified working (`runs/preview_*.svg`)
 - ✅ **Step 1 preview app live** → `app/` FastAPI server: SMILES → RDKit SVG + drug-properties (weight, LogP, TPSA, Lipinski check), served via Freebuff preview
+- ✅ **Step 2 pharmacophore extraction live** → `app/pharmacophore.py`: 6 feature families (SMARTS), 3D embedding + inter-feature distances, highlighted depiction, and a feature-signature similarity score ready for Step 3 filtering
+- ✅ **Step 3 generation live** → `app/generator.py` + `app/scoring.py`: REINVENT4 (CPU, `reinvent_pubchem.prior` from Zenodo) invents ~100 valid molecules in seconds, each scored against the reference pattern (60% signature match / 25% QED / 15% Lipinski, geometric mean) and ranked in the UI
 - ⬜ Prior models + reaction data (Zenodo / figshare)
 - ⬜ Pipeline glue (RDKit pharmacophores → REINVENT4 → AiZynthFinder)
 - ⬜ Web front-end

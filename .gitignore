@@ -11,3 +11,8 @@ tools/*
 # Pipeline outputs
 runs/
 *.log
+
+# REINVENT json-out config artifacts (written next to cwd)
+_*_sampling.json
+_*_learning.json
+_*_scoring.json

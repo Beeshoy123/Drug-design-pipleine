@@ -13,6 +13,10 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 
+from generator import GenerationError, sample_molecules
+from pharmacophore import draw_with_features, extract_pharmacophore, signature_similarity
+from scoring import rank_candidates, to_dicts
+
 from rdkit import Chem
 from rdkit.Chem import Crippen, Descriptors, Lipinski, rdMolDescriptors
 from rdkit.Chem.Draw import rdMolDraw2D
@@ -69,6 +73,64 @@ def molecule(
 ) -> JSONResponse:
     mol = _validate(smiles)
     return JSONResponse({"smiles": smiles, "svg": _mol_to_svg(mol, size), "props": _props(mol)})
+
+
+@app.get("/api/pharmacophore")
+def pharmacophore_endpoint(
+    smiles: str = Query(..., description="Molecule as a SMILES string"),
+    size: int = Query(320, ge=100, le=800),
+) -> JSONResponse:
+    """Step 2: the 'bumps & notches' pattern of the molecule."""
+    try:
+        ph = extract_pharmacophore(smiles, with_3d=True)
+    except ValueError as err:
+        raise HTTPException(status_code=422, detail=str(err)) from err
+    return JSONResponse(
+        {
+            "smiles": ph.smiles,
+            "has_3d": ph.has_3d,
+            "features": [
+                {"family": f.family, "atoms": f.atoms, "centroid": f.centroid}
+                for f in ph.features
+            ],
+            "signature": ph.signature,
+            "distances": sorted(ph.distances, key=lambda d: d["angstrom"])[:8],
+            "svg_highlighted": draw_with_features(ph.smiles, size),
+        }
+    )
+
+
+@app.get("/api/generate")
+def generate(
+    reference: str = Query(..., description="Reference molecule SMILES to match"),
+    num: int = Query(100, ge=10, le=500, description="How many molecules to invent"),
+    seed: int | None = Query(None, description="Random seed for reproducibility"),
+    top: int = Query(12, ge=1, le=50, description="How many top candidates to return"),
+) -> JSONResponse:
+    """Step 3: REINVENT4 invents molecules; we rank them against the reference."""
+    ref_mol = _validate(reference)
+    ref_canon = Chem.MolToSmiles(ref_mol)
+    ref_ph = extract_pharmacophore(ref_canon, with_3d=False)
+
+    try:
+        raw = sample_molecules(num, seed=seed)
+    except GenerationError as err:
+        raise HTTPException(status_code=503, detail=str(err)) from err
+
+    ranked = rank_candidates(raw, ref_ph.signature)[:top]
+    results = to_dicts(ranked)
+    for r in results:
+        r["svg"] = draw_with_features(r["smiles"], 240)
+    return JSONResponse(
+        {
+            "reference": ref_canon,
+            "reference_signature": ref_ph.signature,
+            "requested": num,
+            "generated": len(raw),
+            "returned": len(results),
+            "candidates": results,
+        }
+    )
 
 
 @app.get("/api/examples")
