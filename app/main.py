@@ -1,15 +1,19 @@
-"""Drug-design pipeline — Step 1 preview app.
+"""Drug-design pipeline — web app.
 
-A tiny FastAPI server that shows what our pipeline's UI will feel like:
-type a molecule (SMILES), see it drawn by RDKit with its basic properties.
-This is the first brick of the front-end that will later wrap REINVENT4
-(Step 3) and AiZynthFinder (Step 4).
+Step 1: SMILES (or drug NAME via PubChem) → drawn molecule + properties.
+Step 2: pharmacophore pattern extraction.
+Step 3: REINVENT4 generation scored against the reference pattern.
+Step 4: AiZynthFinder buildability checks.
 """
 
 from __future__ import annotations
 
+import os
+from functools import lru_cache
 from pathlib import Path
+from urllib.parse import quote
 
+import requests
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
@@ -109,8 +113,12 @@ def generate(
     seed: int | None = Query(None, description="Random seed for reproducibility"),
     top: int = Query(12, ge=1, le=50, description="How many top candidates to return"),
 ) -> JSONResponse:
-    """Step 3: REINVENT4 invents molecules; we rank them against the reference."""
-    ref_mol = _validate(reference)
+    """Step 3: REINVENT4 invents molecules; we rank them against the reference.
+
+    The reference may be a SMILES *or* a drug name (e.g. "sorafenib") —
+    resolved server-side via PubChem so every UI path accepts both.
+    """
+    ref_mol = _resolve_reference(reference)
     ref_canon = Chem.MolToSmiles(ref_mol)
     ref_ph = extract_pharmacophore(ref_canon, with_3d=False)
 
@@ -132,6 +140,23 @@ def generate(
             "returned": len(results),
             "candidates": results,
         }
+    )
+
+
+def _resolve_reference(text: str) -> Chem.Mol:
+    """Accept a SMILES *or* a drug name (PubChem lookup); return a Mol."""
+    mol = Chem.MolFromSmiles(text)
+    if mol is not None:
+        return mol
+    smiles, _ = _pubchem_lookup(text.strip().lower())
+    if smiles:
+        mol = Chem.MolFromSmiles(smiles)
+        if mol is not None:
+            return mol
+        raise HTTPException(status_code=502, detail="PubChem returned an unusable SMILES")
+    raise HTTPException(
+        status_code=422,
+        detail=f"'{text}' is neither a valid SMILES nor a known compound name (PubChem)",
     )
 
 
@@ -160,6 +185,51 @@ def buildability(req: BuildabilityRequest) -> JSONResponse:
         raise HTTPException(status_code=503, detail=str(err)) from err
 
     return JSONResponse({"checked": len(results), "results": results})
+
+
+@app.get("/api/resolve")
+def resolve(name: str = Query(..., description="Drug or compound name, e.g. sorafenib")) -> JSONResponse:
+    """Look up a compound by (trade/INN/IUPAC) name via PubChem's free API."""
+    q = name.strip()
+    if not q:
+        raise HTTPException(status_code=422, detail="Empty name")
+
+    smiles, label = _pubchem_lookup(q.lower())
+    if smiles is None:
+        raise HTTPException(status_code=404, detail=f"Could not find {q!r} in PubChem")
+
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:  # PubChem returned something RDKit dislikes — extremely rare
+        raise HTTPException(status_code=502, detail="PubChem returned an unusable SMILES")
+
+    return JSONResponse(
+        {
+            "query": q,
+            "label": label or q,
+            "smiles": Chem.MolToSmiles(mol),
+        }
+    )
+
+
+@lru_cache(maxsize=256)
+def _pubchem_lookup(name: str) -> tuple[str | None, str | None]:
+    """PubChem PUG REST name lookup; cached so repeat queries don't re-hit the API."""
+    url = (
+        "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/"
+        f"{quote(name)}/property/SMILES,ConnectivitySMILES,Title/JSON"
+    )
+    try:
+        resp = requests.get(url, timeout=10, headers={"User-Agent": "silico-pipeline/0.1"})
+    except requests.RequestException:
+        return None, None
+    if resp.status_code != 200:
+        return None, None
+    try:
+        props = resp.json()["PropertyTable"]["Properties"][0]
+    except (KeyError, IndexError, ValueError):
+        return None, None
+    smiles = props.get("ConnectivitySMILES") or props.get("SMILES")
+    return (smiles, props.get("Title")) if smiles else (None, None)
 
 
 @app.get("/api/examples")
