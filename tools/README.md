@@ -6,12 +6,15 @@ The actual tool code is cloned from GitHub and **not** committed to this repo
 ## REINVENT4 — the "recipe inventor"
 
 - **Repo:** https://github.com/MolecularAI/REINVENT4
-- **Cloned at:** tag `v4.8` (v4.8.24), commit `660d2c9cec9ea1ced1b452394fd38452e478fc8b` (2026-09-23)
+- **Pinned at:** commit `660d2c9cec9ea1ced1b452394fd38452e478fc8b` — tag `v4.8` + 13 commits
+  (`git describe --tags` → `v4.8-13-g660d2c9`; `reinvent --version` → 4.8.24), 2026-09-23
 - **Role in pipeline:** Step 3 — invents new drug-like molecules (SMILES strings)
 
 ```shell
+# reproduces the pinned checkout exactly (NOT `git checkout v4.8` — the checkout
+# sits 13 commits past that tag):
 git clone https://github.com/MolecularAI/REINVENT4.git tools/REINVENT4
-cd tools/REINVENT4 && git checkout v4.8
+git -C tools/REINVENT4 checkout 660d2c9cec9ea1ced1b452394fd38452e478fc8b
 ```
 
 Setup (Python ≥ 3.11 required — use `uv`). **Installed in this repo:**
@@ -42,12 +45,15 @@ Prior models (the pre-trained "brains") are downloaded separately from
 ## AiZynthFinder — the "can we actually make it?" checker
 
 - **Repo:** https://github.com/MolecularAI/aizynthfinder
-- **Cloned at:** tag `v4.4.1` (v4.4.1), commit `21ff546d5f22331b078390a2f12dc04defc3f39c` (2026-04-13)
+- **Pinned at:** commit `21ff546d5f22331b078390a2f12dc04defc3f39c` — tag `v4.4.1` + 2 commits
+  (`git describe --tags` → `v4.4.1-2-g21ff546`; package version 4.4.1), 2026-04-13
 - **Role in pipeline:** Step 4 — retrosynthesis: works backwards from a molecule to purchasable building blocks
 
 ```shell
+# reproduces the pinned checkout exactly (NOT `git checkout v4.4.1` — the checkout
+# sits 2 commits past that tag):
 git clone https://github.com/MolecularAI/aizynthfinder.git tools/aizynthfinder
-cd tools/aizynthfinder && git checkout v4.4.1
+git -C tools/aizynthfinder checkout 21ff546d5f22331b078390a2f12dc04defc3f39c
 ```
 
 Setup (Python ≥ 3.10, < 3.13). **Installed in this repo:** `.venv-aizynth`
@@ -87,6 +93,23 @@ pipeline.
 ```shell
 git clone --depth 1 https://github.com/martin-sicho/genui.git tools/genui
 git clone --depth 1 https://github.com/martin-sicho/genui-gui.git tools/genui-gui
+```
+
+## ⚠️ Version pinning — before any `git pull`
+
+> **Do not `git pull` inside `tools/REINVENT4/` or `tools/aizynthfinder/`:** it moves the
+> checkout off the pinned version and may silently change REINVENT4's TOML schema or
+> AiZynthFinder's CLI behaviour — re-check `scripts/setup_envs.sh` and `app/generator.py`
+> against the new version's changelog first.
+
+Both checkouts are **branch tips, not exact tags** (`v4.8-13-g660d2c9`,
+`v4.4.1-2-g21ff546`), so `git clone --branch <tag>` would land on a *different*
+commit than the one pinned above — reproduce with the full SHA as shown in each
+section. Verify what is checked out any time with:
+
+```shell
+git -C tools/REINVENT4 describe --tags      # expect v4.8-13-g660d2c9
+git -C tools/aizynthfinder describe --tags  # expect v4.4.1-2-g21ff546
 ```
 
 ## Roadmap

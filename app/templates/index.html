@@ -48,6 +48,8 @@
     .hero h1 em { font-style: normal; color: var(--purple-2); }
     .hero p { margin: 0 0 26px; color: #c6c9f2; font-size: 15px; line-height: 1.65; max-width: 620px; }
     .kicker { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: #b3b8ff; font-weight: 700; }
+    .kicker button { font: inherit; color: inherit; letter-spacing: inherit; text-transform: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+    .kicker button:hover { text-decoration: underline; }
     .pill-row { display: flex; gap: 12px; flex-wrap: wrap; position: relative; z-index: 1; }
     .pill {
       display: inline-flex; align-items: center; gap: 8px; border-radius: 999px;
@@ -57,10 +59,41 @@
     .pill:hover { filter: brightness(1.07); }
     .pill:active { transform: translateY(1px); }
     .pill:disabled { opacity: 0.55; cursor: wait; }
+    .pill:disabled.done { opacity: 1; cursor: default; }  /* keep the finished Continue readable */
     .pill-navy { background: var(--navy); color: #fff; }
     .pill-purple { background: var(--purple); color: #fff; }
     .pill-ghost { background: transparent; color: #fff; border: 1.5px solid #ffffff59; }
     .pill-ghost:hover { border-color: #fff; }
+    .pill-back { background: #efeffa; color: var(--navy); border: 1px solid var(--line); }
+    .pill-back:hover { filter: brightness(1.03); }
+    .pill.done { background: var(--good); color: #fff; }
+
+    /* ---------- wizard stepper ---------- */
+    .stepper { display: flex; align-items: center; gap: 14px; margin: 34px 0 18px; }
+    .step {
+      display: inline-flex; align-items: center; gap: 10px; cursor: pointer;
+      background: none; border: 0; padding: 0; font-family: inherit;
+    }
+    .step-num {
+      width: 34px; height: 34px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+      font-size: 14px; font-weight: 800; background: #dfe2f3; color: var(--muted);
+      border: 2px solid transparent; transition: background 0.15s ease, color 0.15s ease;
+    }
+    .step-label { font-size: 13.5px; font-weight: 700; color: var(--muted); letter-spacing: 0.2px; }
+    .step-line { flex: 1; height: 2px; background: var(--line); border-radius: 2px; }
+    .step.active .step-num { background: var(--navy); color: #fff; }
+    .step.active .step-label { color: var(--navy); }
+    .step.done .step-num { background: var(--purple); color: #fff; }
+    .step.done .step-label { color: var(--purple); }
+    .wiz-panel { display: none; }
+    .wiz-panel.active { display: block; animation: fadein 0.25s ease; }
+    @keyframes fadein { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    .wiz-nav { display: flex; gap: 12px; margin-top: 22px; flex-wrap: wrap; }
+    .wiz-hint { flex: 1; align-self: center; font-size: 12.5px; color: var(--muted); text-align: right; min-width: 200px; }
+    @media (max-width: 680px) {
+      .stepper { flex-wrap: wrap; }
+      .step-line, .step-label { display: none; }
+    }
 
     /* ---------- stat band ---------- */
     .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 18px 0 26px; }
@@ -75,6 +108,7 @@
 
     /* ---------- sections ---------- */
     .section-head { display: flex; align-items: baseline; gap: 14px; margin: 34px 2px 12px; }
+    .wiz-panel .section-head { margin-top: 0; }
     .section-num { font-size: 34px; font-weight: 800; color: #c9cdf1; letter-spacing: -1px; }
     .section-title { font-size: 22px; font-weight: 800; letter-spacing: -0.3px; color: var(--navy); }
     .section-sub { font-size: 13px; color: var(--purple); font-weight: 700; }
@@ -173,7 +207,7 @@
     </div>
 
     <div class="hero">
-      <div class="kicker">De novo drug design · open source stack</div>
+      <div class="kicker"><button type="button" id="kicker-1">De novo drug design · open source stack</button></div>
       <h1>AI that invents <em>makeable</em> molecules around your target pattern.</h1>
       <p>
         Give a reference molecule. RDKit extracts its pharmacophore — the pattern that makes it biologically
@@ -192,95 +226,128 @@
       <div class="stat"><div class="num">✓/✗</div><div class="lbl">every finalist verified synthesizable via retrosynthesis</div></div>
     </div>
 
-    <!-- ============ 01 · reference ============ -->
-    <div class="section-head">
-      <div class="section-num">01</div>
-      <div>
-        <div class="section-title">Your reference molecule</div>
-        <div class="section-sub">Preview · pharmacophore pattern</div>
+    <!-- ================= wizard ================= -->
+    <div id="wizard">
+      <div class="stepper">
+        <button class="step active" id="wstep-1" type="button"><span class="step-num">1</span><span class="step-label">Reference molecule</span></button>
+        <div class="step-line"></div>
+        <button class="step" id="wstep-2" type="button"><span class="step-num">2</span><span class="step-label">Invention &amp; verification</span></button>
+        <div class="step-line"></div>
+        <button class="step" id="wstep-3" type="button"><span class="step-num">3</span><span class="step-label">Report</span></button>
       </div>
-    </div>
-    <p class="section-desc">
-      Type a <strong>drug name</strong> (like <em>sorafenib</em> — resolved via PubChem) <strong>or</strong> a
-      SMILES code. The structure tab shows the molecule with its drug-properties; the pharmacophore tab
-      reveals the “bumps &amp; notches” pattern the invention step will try to match.
-    </p>
 
-    <div class="card">
-      <div class="row">
-        <input id="smiles" type="text" placeholder="Molecule name (sorafenib) or SMILES code" spellcheck="false" />
-        <button class="pill pill-navy" id="draw">Preview</button>
-      </div>
-      <div class="examples" id="examples"></div>
-      <div class="error" id="error"></div>
-
-      <div class="grid">
-        <div>
-          <div class="tabs">
-            <button class="tab active" id="tab-struct">Structure</button>
-            <button class="tab" id="tab-pharma">Pharmacophore</button>
-          </div>
-          <div class="molecule" id="mol">🧪</div>
-          <div class="pharma-extra" id="pharma-extra">
-            <h3>Features found</h3>
-            <div class="chips" id="chips"></div>
-            <h3>Feature distances (Å)</h3>
-            <div class="dists" id="dists">—</div>
+      <!-- ---- step 1 · reference ---- -->
+      <section class="wiz-panel active" id="panel-1">
+        <div class="section-head">
+          <div class="section-num">01</div>
+          <div>
+            <div class="section-title">Your reference molecule</div>
+            <div class="section-sub">Preview · pharmacophore pattern</div>
           </div>
         </div>
-        <div class="props">
-          <h2>Properties</h2>
-          <table id="props"><tr><td colspan="2" style="color:var(--muted)">Preview a molecule to see its properties.</td></tr></table>
+        <p class="section-desc">
+          Type a <strong>drug name</strong> (like <em>sorafenib</em> — resolved via PubChem) <strong>or</strong> a
+          SMILES code. The structure tab shows the molecule with its drug-properties; the pharmacophore tab
+          reveals the “bumps &amp; notches” pattern the invention step will try to match.
+        </p>
+
+        <div class="card">
+          <div class="row">
+            <input id="smiles" type="text" placeholder="Molecule name (sorafenib) or SMILES code" spellcheck="false" />
+            <button class="pill pill-navy" id="draw">Preview</button>
+          </div>
+          <div class="examples" id="examples"></div>
+          <div class="error" id="error"></div>
+
+          <div class="grid">
+            <div>
+              <div class="tabs">
+                <button class="tab active" id="tab-struct">Structure</button>
+                <button class="tab" id="tab-pharma">Pharmacophore</button>
+              </div>
+              <div class="molecule" id="mol">🧪</div>
+              <div class="pharma-extra" id="pharma-extra">
+                <h3>Features found</h3>
+                <div class="chips" id="chips"></div>
+                <h3>Feature distances (Å)</h3>
+                <div class="dists" id="dists">—</div>
+              </div>
+            </div>
+            <div class="props">
+              <h2>Properties</h2>
+              <table id="props"><tr><td colspan="2" style="color:var(--muted)">Preview a molecule to see its properties.</td></tr></table>
+            </div>
+          </div>
+
+          <div class="wiz-nav">
+            <button class="pill pill-purple" id="next-1">Continue → Invention</button>
+            <span class="wiz-hint">happy with the pattern? move on — you can come back any time.</span>
+          </div>
         </div>
-      </div>
-    </div>
+      </section>
 
-    <!-- ============ 02 · invention ============ -->
-    <div class="section-head">
-      <div class="section-num">02</div>
-      <div>
-        <div class="section-title">Invention &amp; verification</div>
-        <div class="section-sub">REINVENT4 generation · AiZynthFinder buildability</div>
-      </div>
-    </div>
-    <p class="section-desc">
-      REINVENT4 invents brand-new molecules, each scored against the reference pattern —
-      <strong>60%</strong> pattern match, <strong>25%</strong> drug-likeness (QED), <strong>15%</strong> Lipinski
-      check. Then the retrosynthesis checker verifies the top candidates are actually makeable.
-    </p>
+      <!-- ---- step 2 · invention & verification ---- -->
+      <section class="wiz-panel" id="panel-2">
+        <div class="section-head">
+          <div class="section-num">02</div>
+          <div>
+            <div class="section-title">Invention &amp; verification</div>
+            <div class="section-sub">REINVENT4 generation · AiZynthFinder buildability</div>
+          </div>
+        </div>
+        <p class="section-desc">
+          REINVENT4 invents brand-new molecules, each scored against the reference pattern —
+          <strong>60%</strong> pattern match, <strong>25%</strong> drug-likeness (QED), <strong>15%</strong> Lipinski
+          check. Then the retrosynthesis checker verifies the top candidates are actually makeable.
+        </p>
 
-    <div class="card">
-      <div class="row">
-        <button class="pill pill-purple" id="gen">🍳 Invent 100 molecules</button>
-        <button class="pill pill-navy" id="check">🛒 Check top 6 buildability</button>
-        <span class="dists" id="gen-status" style="align-self:center"></span>
-      </div>
-      <div class="error" id="gen-error"></div>
-      <div class="error" id="check-error"></div>
-      <div id="results"></div>
-    </div>
+        <div class="card">
+          <div class="row">
+            <button class="pill pill-purple" id="gen">🍳 Invent 100 molecules</button>
+            <button class="pill pill-navy" id="check" disabled>🛒 Check top 6 buildability</button>
+            <span class="dists" id="gen-status" style="align-self:center"></span>
+          </div>
+          <div class="error" id="gen-error"></div>
+          <div class="error" id="check-error"></div>
+          <div id="results"></div>
 
-    <!-- ============ 03 · report ============ -->
-    <div class="section-head">
-      <div class="section-num">03</div>
-      <div>
-        <div class="section-title">The full pipeline, one click</div>
-        <div class="section-sub">Invent → score → verify → ranked report</div>
-      </div>
-    </div>
-    <p class="section-desc">
-      Runs everything on the reference molecule and keeps only the winners — makeable and best-scoring —
-      as a ranked table you can download as CSV. About 1–2 minutes on this machine.
-    </p>
+          <div class="wiz-nav">
+            <button class="pill pill-back" id="back-2">← Back</button>
+            <button class="pill pill-purple" id="next-2">Continue → Report</button>
+            <span class="wiz-hint">invention takes ~1 minute; buildability checks stream in one by one.</span>
+          </div>
+        </div>
+      </section>
 
-    <div class="card navy">
-      <div class="row">
-        <button class="pill pill-purple" id="pipeline">🚀 Run whole pipeline</button>
-        <span class="dists" id="pipe-status" style="align-self:center;color:#c6c9f2"></span>
-      </div>
-      <div class="error" id="pipe-error" style="color:#fda4af"></div>
-      <div class="dists" id="pipe-log" style="margin-top:10px;color:#c6c9f2"></div>
-      <div id="report" style="color:var(--ink);background:#fff;border-radius:14px;padding:6px 14px 14px;margin-top:14px"></div>
+      <!-- ---- step 3 · report ---- -->
+      <section class="wiz-panel" id="panel-3">
+        <div class="section-head">
+          <div class="section-num">03</div>
+          <div>
+            <div class="section-title">The full pipeline, one click</div>
+            <div class="section-sub">Invent → score → verify → ranked report</div>
+          </div>
+        </div>
+        <p class="section-desc">
+          Runs everything on the reference molecule and keeps only the winners — makeable and best-scoring —
+          as a ranked table you can download as CSV. About 1–2 minutes on this machine.
+        </p>
+
+        <div class="card navy">
+          <div class="row">
+            <button class="pill pill-purple" id="pipeline" disabled>🚀 Run whole pipeline</button>
+            <span class="dists" id="pipe-status" style="align-self:center;color:#c6c9f2"></span>
+          </div>
+          <div class="error" id="pipe-error" style="color:#fda4af"></div>
+          <div class="dists" id="pipe-log" style="margin-top:10px;color:#c6c9f2"></div>
+          <div id="report" style="color:var(--ink);background:#fff;border-radius:14px;padding:6px 14px 14px;margin-top:14px"></div>
+
+          <div class="wiz-nav">
+            <button class="pill pill-back" id="back-3" style="color:#c6c9f2;background:#ffffff1f;border-color:#ffffff3d">← Back</button>
+            <span class="wiz-hint" style="color:#b3b8ff">want different candidates? rerun, or go back and pick another reference.</span>
+          </div>
+        </div>
+      </section>
     </div>
 
     <footer>
@@ -317,6 +384,7 @@
 
     let pharmaData = null;
     let lastMolSvg = null;
+    let currentStep = 1;
 
     const fmt = (v, d = 1) => (typeof v === "number" ? v.toFixed(d) : v);
 
@@ -417,6 +485,8 @@
         if (pharmaData) renderPharma(pharmaData);
         showTab("struct");
         history.replaceState(null, "", `?smiles=${encodeURIComponent(smiles)}`);
+        // wizard: a successful preview is the "done" signal for step 1
+        if (currentStep === 1) setTimeout(() => { if (currentStep === 1) goToStep(2); }, 700);
       } catch (e) {
         errBox.textContent = e.message;
         molBox.innerHTML = "🧪";
@@ -426,7 +496,7 @@
     }
 
     function pipeNote(msg) {
-      // small transient confirmation inside the section-01 card
+      // small transient confirmation inside the step-1 card
       errBox.textContent = msg;
       errBox.style.color = "var(--good)";
       setTimeout(() => { errBox.textContent = ""; errBox.style.color = ""; }, 4000);
@@ -441,20 +511,57 @@
       for (const ex of list) {
         const b = document.createElement("button");
         b.textContent = ex.label;
-        b.addEventListener("click", () => { input.value = ex.smiles; preview(ex.smiles); });
+        b.addEventListener("click", () => {
+          goToStep(1);
+          input.value = ex.smiles;
+          preview(ex.smiles);
+        });
         $("examples").appendChild(b);
       }
     });
 
+    // ---------- wizard navigation ----------
+    const panels = [null, $("panel-1"), $("panel-2"), $("panel-3")];
+    const wsteps = [null, $("wstep-1"), $("wstep-2"), $("wstep-3")];
+
+    function goToStep(n) {
+      for (let i = 1; i <= 3; i++) {
+        panels[i].classList.toggle("active", i === n);
+        wsteps[i].classList.toggle("done", i < n);
+      }
+      currentStep = n;
+      $("wizard").scrollIntoView({ behavior: "smooth", block: "start" });
+      if (n === 2) drawBtn.disabled = false;
+    }
+
+    $("next-1").addEventListener("click", () => goToStep(2));
+    $("back-2").addEventListener("click", () => goToStep(1));
+    $("next-2").addEventListener("click", () => goToStep(3));
+    $("back-3").addEventListener("click", () => goToStep(2));
+    wsteps[1].addEventListener("click", () => goToStep(1));
+    wsteps[2].addEventListener("click", () => goToStep(2));
+    wsteps[3].addEventListener("click", () => goToStep(3));
+
     const genBtn = $("gen"), genStatus = $("gen-status"), genError = $("gen-error"), resultsBox = $("results");
     const checkBtn = $("check"), checkError = $("check-error");
+    const pipeBtn = $("pipeline"), pipeStatus = $("pipe-status"), pipeError = $("pipe-error"), pipeLog = $("pipe-log"), reportBox = $("report");
     let lastResults = [];
+
+    function markInvented(ok) {
+      // After a run: green "Continue" style while results exist; grey out
+      // downstream steps while a fresh run is in flight or results are gone.
+      genBtn.classList.toggle("done", ok);
+      genBtn.textContent = ok ? "✓ Invented — Continue →" : "🍳 Invent 100 molecules";
+      checkBtn.disabled = !ok;
+      pipeBtn.disabled = !ok;
+    }
 
     function card(r, rank) {
       const n = rank + 1;  // badges and ranks are 1-based everywhere
+      const geo = r.geometry_sim != null ? ` · 3D ${(r.geometry_sim * 100).toFixed(0)}%` : "";
       return `<div class="rcard" id="rcard-${n}">${r.svg}
         <div class="score">#${n} · score ${r.score.toFixed(3)}</div>
-        <div class="sub">pattern ${(r.sig_sim * 100).toFixed(0)}% · QED ${r.qed.toFixed(2)} · Lipinski ${r.lipinski.toFixed(2)} · ${r.props.molecular_weight} g/mol</div>
+        <div class="sub">pattern ${(r.sig_sim * 100).toFixed(0)}%${geo} · QED ${r.qed.toFixed(2)} · Lipinski ${r.lipinski.toFixed(2)} · ${r.props.molecular_weight} g/mol</div>
         <div class="smi">${r.smiles}</div>
         <div class="build-badge" id="badge-${n}" style="margin-top:7px;font-size:11px;color:var(--muted)">—</div>
       </div>`;
@@ -495,9 +602,12 @@
 
     genBtn.addEventListener("click", async () => {
       const ref = input.value.trim();
-      if (!ref) { genError.textContent = "Enter a reference molecule above first."; return; }
+      if (!ref) { genError.textContent = "Enter a reference molecule in step 1 first."; return; }
       genBtn.disabled = true;
       genError.textContent = "";
+      genBtn.classList.remove("done");
+      checkBtn.disabled = true;
+      pipeBtn.disabled = true;
       genStatus.innerHTML = '<span class="spinner"></span> the AI chef is inventing + scoring…';
       resultsBox.innerHTML = "";
       try {
@@ -507,9 +617,11 @@
         genStatus.textContent = `${data.generated} invented · top ${data.returned} shown · reference: ${data.reference}`;
         lastResults = data.candidates;
         resultsBox.innerHTML = `<div class="rgrid">${data.candidates.map(card).join("")}</div>`;
+        markInvented(true);
       } catch (e) {
         genError.textContent = e.message;
         genStatus.textContent = "";
+        markInvented(false);
       } finally {
         genBtn.disabled = false;
       }
@@ -517,15 +629,13 @@
 
     checkBtn.addEventListener("click", checkBuildable);
 
-    const initial = new URLSearchParams(location.search).get("smiles");
-
-    const pipeBtn = $("pipeline"), pipeStatus = $("pipe-status"), pipeError = $("pipe-error"), pipeLog = $("pipe-log"), reportBox = $("report");
     const pipeStep = (msg) => { pipeLog.innerHTML += msg + "<br>"; };
 
     function downloadCSV(rows) {
-      const header = ["rank", "smiles", "score", "pattern_match", "qed", "lipinski", "makeable", "steps", "route_score", "building_blocks"];
+      const header = ["rank", "smiles", "score", "pattern_match", "geometry_match", "qed", "lipinski", "makeable", "steps", "route_score", "building_blocks"];
       const lines = rows.map((r, i) =>
-        [i + 1, r.smiles, r.score.toFixed(4), r.sig_sim, r.qed, r.lipinski,
+        [i + 1, r.smiles, r.score.toFixed(4), r.sig_sim,
+         r.geometry_sim != null ? r.geometry_sim : "", r.qed, r.lipinski,
          r.build ? "yes" : "no", r.steps ?? "", r.route_score ?? "",
          `"${(r.blocks || []).join("; ")}"`].join(","));
       const blob = new Blob([header.join(",") + "\n" + lines.join("\n")], { type: "text/csv" });
@@ -537,7 +647,7 @@
 
     pipeBtn.addEventListener("click", async () => {
       const ref = input.value.trim();
-      if (!ref) { pipeError.textContent = "Enter a reference molecule above first."; return; }
+      if (!ref) { pipeError.textContent = "Enter a reference molecule in step 1 first."; return; }
       pipeBtn.disabled = true;
       pipeError.textContent = "";
       pipeLog.innerHTML = "";
@@ -604,17 +714,19 @@
       }
     });
 
-    // hero buttons: wire into the existing flow
+    // hero buttons: wire into the wizard flow
     $("hero-run").addEventListener("click", () => {
-      pipeBtn.scrollIntoView({ behavior: "smooth", block: "center" });
+      goToStep(3);
       pipeBtn.click();
     });
     $("hero-demo").addEventListener("click", () => {
+      goToStep(1);
       input.value = "CC(=O)OC1=CC=CC=C1C(=O)O";
       preview(input.value);
-      window.scrollTo({ top: 0, behavior: "smooth" });
     });
+    $("kicker-1").addEventListener("click", () => goToStep(1));
 
+    const initial = new URLSearchParams(location.search).get("smiles");
     if (initial) { input.value = initial; preview(initial); }
     else { preview("CC(=O)OC1=CC=CC=C1C(=O)O"); }
   </script>

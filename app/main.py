@@ -19,9 +19,15 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
 from buildability import BuildabilityError, get_checker
-from generator import GenerationError, sample_molecules
+from generator import (
+    GenerationError,
+    RL_MAX_NUM_STEPS,
+    last_rl_run_info,
+    run_staged_learning,
+    sample_molecules,
+)
 from pharmacophore import draw_with_features, extract_pharmacophore, signature_similarity
-from scoring import rank_candidates, to_dicts
+from scoring import GEOMETRY_STAGE_TOP_N, rank_candidates, to_dicts
 
 from rdkit import Chem
 from rdkit.Chem import Crippen, Descriptors, Lipinski, rdMolDescriptors
@@ -120,12 +126,63 @@ def generate(
     """
     ref_mol = _resolve_reference(reference)
     ref_canon = Chem.MolToSmiles(ref_mol)
-    ref_ph = extract_pharmacophore(ref_canon, with_3d=False)
+    # 3D-embed the reference ONCE; candidates are embedded only for the
+    # geometry stage (top-N by count score) inside rank_candidates.
+    ref_ph = extract_pharmacophore(ref_canon, with_3d=True)
 
     try:
         raw = sample_molecules(num, seed=seed)
     except GenerationError as err:
         raise HTTPException(status_code=503, detail=str(err)) from err
+
+    ranked = rank_candidates(
+        raw,
+        ref_ph.signature,
+        ref_pharmacophore=ref_ph,
+        geometry_top_n=max(GEOMETRY_STAGE_TOP_N, top),
+    )[:top]
+    results = to_dicts(ranked)
+    for r in results:
+        r["svg"] = draw_with_features(r["smiles"], 240)
+    return JSONResponse(
+        {
+            "reference": ref_canon,
+            "reference_signature": ref_ph.signature,
+            "scoring_mode": "counts+geometry" if ref_ph.has_3d else "counts_only",
+            "reference_has_3d": ref_ph.has_3d,
+            "requested": num,
+            "generated": len(raw),
+            "returned": len(results),
+            "candidates": results,
+        }
+    )
+
+
+@app.get("/api/generate_rl")
+def generate_rl(
+    reference: str = Query(..., description="Reference molecule SMILES (or name) to steer toward"),
+    num_steps: int = Query(30, ge=1, le=RL_MAX_NUM_STEPS, description="RL steps — CPU budget caps this at 45; 200 would take ~14 min"),
+    batch_size: int = Query(64, ge=8, le=128, description="Molecules sampled per RL step"),
+    seed: int | None = Query(None, description="Random seed for reproducibility"),
+    top: int = Query(12, ge=1, le=50, description="How many top candidates to return"),
+) -> JSONResponse:
+    """Step 3, steered mode: actual RL fine-tuning against the pharmacophore reward.
+
+    Same shape as /api/generate, but the reward is applied DURING generation
+    (REINVENT4 staged_learning with a live scoring component) instead of only
+    post-hoc. Costs ~2.5 min on this 1-core CPU (vs ~10 s for /api/generate);
+    30 steps visibly steers the agent but is not a converged RL run.
+    """
+    ref_mol = _resolve_reference(reference)
+    ref_canon = Chem.MolToSmiles(ref_mol)
+    ref_ph = extract_pharmacophore(ref_canon, with_3d=False)
+
+    try:
+        raw = run_staged_learning(ref_ph.signature, num_steps=num_steps, batch_size=batch_size, seed=seed)
+    except GenerationError as err:
+        raise HTTPException(status_code=503, detail=str(err)) from err
+    except ValueError as err:
+        raise HTTPException(status_code=422, detail=str(err)) from err
 
     ranked = rank_candidates(raw, ref_ph.signature)[:top]
     results = to_dicts(ranked)
@@ -135,7 +192,10 @@ def generate(
         {
             "reference": ref_canon,
             "reference_signature": ref_ph.signature,
-            "requested": num,
+            "mode": "rl_staged_learning",
+            "requested_steps": num_steps,
+            "batch_size": batch_size,
+            "rl_run": dict(last_rl_run_info),
             "generated": len(raw),
             "returned": len(results),
             "candidates": results,

@@ -20,10 +20,36 @@ WORKER = ROOT / "app" / "aizynth_worker.py"
 PYTHON = ROOT / ".venv-aizynth" / "bin" / "python"
 
 POOL_SIZE = 2  # workers × ~10 s each ≈ 5 molecules in ~25 s wall time
+STARTUP_TIMEOUT_S = 60.0  # ready-line deadline; model load is ~1 s normally
 
 
 class BuildabilityError(RuntimeError):
     pass
+
+
+def _readline_with_timeout(stream, timeout: float) -> str:
+    """Read one line from a pipe-backed text stream with a deadline.
+
+    ``stream.readline()`` has no timeout parameter, and ``select()`` on the
+    underlying fd can disagree with Python's buffered text layer (a line may
+    already sit in the buffer while the fd looks empty), so the read runs in a
+    short-lived helper thread and we wait on it — matching this module's
+    thread-pool design.  The helper is a daemon: on timeout the caller kills
+    the worker, which closes the pipe and lets the blocked reader exit.
+
+    Raises TimeoutError("timed out after Ns") when nothing arrives in time.
+    """
+    result: list[str] = []
+
+    def read_line() -> None:
+        result.append(stream.readline())
+
+    reader = threading.Thread(target=read_line, daemon=True)
+    reader.start()
+    reader.join(timeout)
+    if reader.is_alive():
+        raise TimeoutError(f"timed out after {timeout:g}s")
+    return result[0] if result else ""
 
 
 class _Worker:
@@ -41,17 +67,30 @@ class _Worker:
             cwd=str(ROOT),
             env=env,
         )
-        ready = self.proc.stdout.readline()
+        try:
+            ready = _readline_with_timeout(self.proc.stdout, STARTUP_TIMEOUT_S)
+        except TimeoutError as err:
+            self.kill()
+            raise BuildabilityError(f"buildability worker failed to start ({err})") from err
         if not ready or "ready" not in ready:
             raise BuildabilityError("buildability worker failed to start")
 
     def alive(self) -> bool:
         return self.proc.poll() is None
 
-    def ask(self, smiles: str, request_id: int) -> dict:
+    def kill(self) -> None:
+        """Kill the subprocess and reap it (used for hung workers)."""
+        if self.alive():
+            self.proc.kill()
+        try:
+            self.proc.wait(timeout=5)  # don't leave a zombie behind
+        except subprocess.TimeoutExpired:
+            pass
+
+    def ask(self, smiles: str, request_id: int, timeout: float) -> dict:
         self.proc.stdin.write(json.dumps({"smiles": smiles, "id": request_id}) + "\n")
         self.proc.stdin.flush()
-        line = self.proc.stdout.readline()
+        line = _readline_with_timeout(self.proc.stdout, timeout)
         if not line:
             raise BuildabilityError("worker died")
         return json.loads(line)
@@ -74,7 +113,13 @@ class BuildabilityChecker:
         per_item_timeout: float = 60.0,
         on_progress=None,
     ) -> list[dict]:
-        del per_item_timeout  # bounded by the worker's expansion_time instead
+        """Check molecules in parallel across the pool.
+
+        per_item_timeout bounds each worker response: the worker's
+        expansion_time only bounds the tree search itself, not hangs (stuck
+        model load, OOM, blocked I/O).  A timed-out item gets an error dict
+        and its worker is killed and replaced, never reused.
+        """
         results: list[dict | None] = [None] * len(smiles_list)
         progress_lock = threading.Lock()
         done = [0]
@@ -82,7 +127,17 @@ class BuildabilityChecker:
         def run_one(i: int, smi: str) -> None:
             worker = self._workers.get()
             try:
-                results[i] = worker.ask(smi, i)
+                results[i] = worker.ask(smi, i, per_item_timeout)
+            except TimeoutError as err:
+                # A timed-out worker may still be chewing on the old request;
+                # putting it back would corrupt the JSON-lines protocol for the
+                # next caller.  Kill and replace — same pattern as a dead one.
+                results[i] = {"smiles": smi, "error": str(err)[:200]}
+                worker.kill()
+                try:
+                    self._workers.put(_Worker())
+                except BuildabilityError:
+                    pass
             except Exception as err:  # noqa: BLE001 — report, don't crash the batch
                 results[i] = {"smiles": smi, "error": str(err)[:200]}
                 if worker.alive():

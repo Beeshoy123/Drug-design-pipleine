@@ -138,6 +138,80 @@ def signature_similarity(a: dict[str, int], b: dict[str, int]) -> float:
     return intersection / union
 
 
+# Gaussian width (in Angstrom) for geometry_similarity.  Why a Gaussian instead
+# of a hard 1-2 A cutoff:  feature positions come from centroids of SMARTS
+# atom groups in ONE embedded conformer, so distances carry ~1 A of conformer
+# noise even between perfect matches; a hard threshold would flip matches on
+# tiny perturbations.  exp(-((d_ref-d_cand)/1.5)^2) gives ~0.64 credit at 1 A
+# deviation and ~0.17 at 2 A — smooth, symmetric, and lenient exactly where
+# the noise is.  Same spirit as the sigmoid transforms REINVENT4 uses.
+GEOMETRY_SIGMA_A = 1.5
+
+
+def _distance_pair_family(entry: dict) -> tuple[str, str]:
+    """Family pair of a distances entry, order-normalized ("donor", "acceptor")."""
+    fam_a = entry["a"].split("#")[0]
+    fam_b = entry["b"].split("#")[0]
+    return (fam_a, fam_b) if fam_a <= fam_b else (fam_b, fam_a)
+
+
+def _distances_by_pair(ph: Pharmacophore) -> dict[tuple[str, str], list[float]]:
+    grouped: dict[tuple[str, str], list[float]] = {}
+    for entry in ph.distances:
+        grouped.setdefault(_distance_pair_family(entry), []).append(entry["angstrom"])
+    return grouped
+
+
+def geometry_similarity(ref: Pharmacophore, candidate: Pharmacophore) -> float:
+    """0-1 score: how well the candidate's 3D inter-feature distances match the
+    reference's, regardless of which specific atoms realize them.
+
+    Method (soft symmetric matching, a smoothed Chamfer distance):
+      For each feature-pair type present in EITHER molecule (e.g. donor-acceptor)
+      every candidate distance of that type is credited by the Gaussian of its
+      nearest reference distance, and symmetrically every reference distance by
+      its nearest candidate distance; the two means are averaged.  This is
+      order-free — no greedy pairing, so extra features on either side simply
+      dilute their side's mean instead of crashing or being ignored.
+
+    Unmatched feature-pair types (in the union) contribute 0.0: a molecule
+    missing an entire interaction motif is materially different, so the penalty
+    is proportional (1/n_types) rather than catastrophic — counts of remaining
+    motifs can still be excellent.
+
+    Requires both Pharmacophores to be 3D-embedded (has_3d=True); raises
+    ValueError otherwise — never fall back silently, that would hide exactly
+    the shape mismatch this function exists to catch.
+    """
+    if not (ref.has_3d and candidate.has_3d):
+        raise ValueError(
+            "geometry_similarity needs 3D-embedded pharmacophores "
+            "(extract_pharmacophore(..., with_3d=True) on both sides)"
+        )
+
+    ref_groups = _distances_by_pair(ref)
+    cand_groups = _distances_by_pair(candidate)
+    if not ref_groups and not cand_groups:
+        return 1.0  # fewer than two features each: no geometry to disagree about
+
+    def group_score(ref_d: list[float] | None, cand_d: list[float] | None) -> float:
+        if not ref_d or not cand_d:
+            return 0.0  # type exists on one side only -> treated as full mismatch
+        sigma2 = 2 * GEOMETRY_SIGMA_A**2
+
+        def side_mean(sources: list[float], targets: list[float]) -> float:
+            return sum(
+                max(math.exp(-((s - t) ** 2) / sigma2) for t in targets)
+                for s in sources
+            ) / len(sources)
+
+        return (side_mean(cand_d, ref_d) + side_mean(ref_d, cand_d)) / 2
+
+    all_types = set(ref_groups) | set(cand_groups)
+    total = sum(group_score(ref_groups.get(t), cand_groups.get(t)) for t in all_types)
+    return round(total / len(all_types), 4)
+
+
 def draw_with_features(smiles: str, size: int = 320) -> str:
     """2D depiction with feature atoms highlighted (one color per family)."""
     mol = Chem.MolFromSmiles(smiles)
