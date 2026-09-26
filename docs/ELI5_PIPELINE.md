@@ -179,6 +179,13 @@ proof that the "REINVENT4 but with buttons" idea works. We use it as
 **inspiration**: how does it show molecules? how does it run jobs in the
 background? We build our own, simpler version.
 
+**Update:** we checked it properly. It's a big Django + Postgres + Redis +
+Docker platform from 2022 that wraps a different AI chef (DrugEx) — running
+it would be like buying a whole restaurant just to peek at the kitchen's
+floor plan. So: cloned for reference only, never run. Details in
+`docs/Genui_NOTES.md`. Bonus: RDKit (which we already have) draws molecule
+pictures by itself, so the "pretty preview" part is easy without GenUI.
+
 ---
 
 ## The Full Flow (one picture)

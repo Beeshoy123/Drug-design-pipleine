@@ -20,4 +20,7 @@ uv venv "$ROOT/.venv-aizynth" --python 3.12
 uv pip install --python "$ROOT/.venv-aizynth/bin/python" "$ROOT/tools/aizynthfinder"
 "$ROOT/.venv-aizynth/bin/aizynthcli" --help >/dev/null && echo "aizynthcli OK"
 
+echo "==> Web app deps (into .venv-reinvent, shares RDKit)"
+uv pip install --python "$ROOT/.venv-reinvent/bin/python" -r "$ROOT/app/requirements.txt"
+
 echo "==> Done. Next: download models (see tools/README.md)"

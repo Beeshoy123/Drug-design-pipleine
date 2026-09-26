@@ -1,0 +1,3 @@
+# Shared by the pipeline app (FastAPI + RDKit) — installed into .venv-reinvent
+fastapi>=0.110,<1
+uvicorn>=0.29,<1
