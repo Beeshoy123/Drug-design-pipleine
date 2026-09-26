@@ -73,8 +73,25 @@ Handy to know: it ships three entry points — `aizynthcli` (command line),
 `aizynthapp` (a minimal built-in web UI), and the Python API we'll use in the
 pipeline.
 
+## GenUI — reference only, do not run
+
+- **Backend:** https://github.com/martin-sicho/genui — cloned `tools/genui`
+  (shallow, tip `992b72a`, 2022-09)
+- **Frontend:** https://github.com/martin-sicho/genui-gui — cloned
+  `tools/genui-gui` (shallow, tip `db1faee`, 2022-09)
+- **Role:** design reference for our own front-end (job flow, result fields,
+  dashboard widgets). **Not installed** — see `docs/Genui_NOTES.md` for why
+  (Django+Postgres+Redis+Docker stack, 2021-era pins, integrates DrugEx not
+  REINVENT4).
+
+```shell
+git clone --depth 1 https://github.com/martin-sicho/genui.git tools/genui
+git clone --depth 1 https://github.com/martin-sicho/genui-gui.git tools/genui-gui
+```
+
 ## Roadmap
 
 - [x] REINVENT4 (github.com/MolecularAI/REINVENT4) — Step 3, the AI chef
 - [x] AiZynthFinder (github.com/MolecularAI/aizynthfinder) — Step 4, "can we actually make it?"
+- [x] GenUI + genui-gui (martin-sicho) — reference for our front-end, not installed
 - [ ] Pipeline glue + front-end app
