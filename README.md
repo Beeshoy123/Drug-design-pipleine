@@ -53,6 +53,6 @@ install, uvicorn on port 8080 as the dev server).
 - ✅ **Step 1 preview app live** → `app/` FastAPI server: SMILES → RDKit SVG + drug-properties (weight, LogP, TPSA, Lipinski check), served via Freebuff preview
 - ✅ **Step 2 pharmacophore extraction live** → `app/pharmacophore.py`: 6 feature families (SMARTS), 3D embedding + inter-feature distances, highlighted depiction, and a feature-signature similarity score ready for Step 3 filtering
 - ✅ **Step 3 generation live** → `app/generator.py` + `app/scoring.py`: REINVENT4 (CPU, `reinvent_pubchem.prior` from Zenodo) invents ~100 valid molecules in seconds, each scored against the reference pattern (60% signature match / 25% QED / 15% Lipinski, geometric mean) and ranked in the UI
-- ⬜ Prior models + reaction data (Zenodo / figshare)
-- ⬜ Pipeline glue (RDKit pharmacophores → REINVENT4 → AiZynthFinder)
-- ⬜ Web front-end
+- ✅ **Step 4 buildability live** → `app/aizynth_worker.py` + `app/buildability.py`: AiZynthFinder retrosynthesis in a worker subprocess (ONNX USPTO models + 11 MB molbloom ZINC filter — light enough for 1.9 GB RAM), returns makeable ✓/✗, route score, step count, and purchasable building blocks; UI badge per candidate
+- ⬜ Step 5: combined ranked report view (currently: Step 3 cards + Step 4 badges)
+- ⬜ Optional upgrades: full ZINC stock on a bigger machine, 3D pharmacophore scoring in REINVENT, RL fine-tuning runs

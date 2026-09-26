@@ -12,7 +12,9 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse
+from pydantic import BaseModel
 
+from buildability import BuildabilityError, get_checker
 from generator import GenerationError, sample_molecules
 from pharmacophore import draw_with_features, extract_pharmacophore, signature_similarity
 from scoring import rank_candidates, to_dicts
@@ -131,6 +133,33 @@ def generate(
             "candidates": results,
         }
     )
+
+
+class BuildabilityRequest(BaseModel):
+    smiles: list[str]
+
+
+@app.post("/api/buildability")
+def buildability(req: BuildabilityRequest) -> JSONResponse:
+    """Step 4: retrosynthesis check — can these molecules actually be made?
+
+    Each check takes ~15-20 s (tree search against reaction rules), so keep
+    the batch small; we cap it at 10 molecules.
+    """
+    canonical: list[str] = []
+    for smi in req.smiles[:10]:
+        mol = Chem.MolFromSmiles(smi)
+        if mol is not None:
+            canonical.append(Chem.MolToSmiles(mol))
+    if not canonical:
+        raise HTTPException(status_code=422, detail="No valid SMILES in request")
+
+    try:
+        results = get_checker().check_smiles_batch(canonical)
+    except BuildabilityError as err:
+        raise HTTPException(status_code=503, detail=str(err)) from err
+
+    return JSONResponse({"checked": len(results), "results": results})
 
 
 @app.get("/api/examples")

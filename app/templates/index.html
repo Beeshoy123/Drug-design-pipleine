@@ -144,9 +144,11 @@
       </p>
       <div class="row">
         <button class="primary" id="gen">🍳 Invent 100 molecules</button>
+        <button class="primary" id="check" style="background:var(--accent2);color:#08213d">🛒 Check top 5 buildability</button>
         <span class="dists" id="gen-status" style="align-self:center"></span>
       </div>
       <div class="error" id="gen-error"></div>
+      <div class="error" id="check-error"></div>
       <div id="results"></div>
     </div>
 
@@ -274,13 +276,47 @@
     });
 
     const genBtn = $("gen"), genStatus = $("gen-status"), genError = $("gen-error"), resultsBox = $("results");
+    const checkBtn = $("check"), checkError = $("check-error");
+    let lastResults = [];
 
     function card(r, rank) {
-      return `<div class="rcard">${r.svg}
+      return `<div class="rcard" id="rcard-${rank}">${r.svg}
         <div class="score">#${rank} · score ${r.score.toFixed(3)}</div>
         <div class="sub">pattern ${(r.sig_sim * 100).toFixed(0)}% · QED ${r.qed.toFixed(2)} · Lipinski ${r.lipinski.toFixed(2)} · ${r.props.molecular_weight} g/mol</div>
         <div class="smi">${r.smiles}</div>
+        <div class="build-badge" id="badge-${rank}" style="margin-top:6px;font-size:11px;color:var(--muted)">—</div>
       </div>`;
+    }
+
+    async function checkBuildable() {
+      if (!lastResults.length) return;
+      checkBtn.disabled = true;
+      checkError.textContent = "";
+      const targets = lastResults.slice(0, 5);  // ~20 s each — keep the batch small
+      targets.forEach((r, i) => { $(`badge-${i + 1}`).innerHTML = '<span class="spinner"></span> checking…'; });
+      try {
+        for (let i = 0; i < targets.length; i++) {
+          const res = await fetch("/api/buildability", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ smiles: [targets[i].smiles] }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.detail || "Buildability check failed");
+          const r = data.results[0];
+          const badge = $(`badge-${i + 1}`);
+          if (r.error) { badge.textContent = `⚠ ${r.error}`; continue; }
+          if (r.buildable) {
+            badge.innerHTML = `<span class="ok">✓ makeable · ${r.n_steps} step${r.n_steps === 1 ? "" : "s"} · route score ${r.score}</span>`;
+          } else {
+            badge.innerHTML = `<span class="warn">✗ no route found</span>`;
+          }
+        }
+      } catch (e) {
+        checkError.textContent = e.message;
+      } finally {
+        checkBtn.disabled = false;
+      }
     }
 
     genBtn.addEventListener("click", async () => {
@@ -295,6 +331,7 @@
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || "Generation failed");
         genStatus.textContent = `${data.generated} invented · top ${data.returned} shown · reference: ${data.reference}`;
+        lastResults = data.candidates;
         resultsBox.innerHTML = `<div class="rgrid">${data.candidates.map(card).join("")}</div>`;
       } catch (e) {
         genError.textContent = e.message;
@@ -303,6 +340,8 @@
         genBtn.disabled = false;
       }
     });
+
+    checkBtn.addEventListener("click", checkBuildable);
 
     const initial = new URLSearchParams(location.search).get("smiles");
     if (initial) { input.value = initial; preview(initial); }
