@@ -1,0 +1,13 @@
+# Ignores
+__pycache__/
+*.py[cod]
+.venv*/
+venv/
+
+# Cloned external tools (each has its own .git, see tools/README.md)
+tools/*
+!tools/README.md
+
+# Pipeline outputs
+runs/
+*.log
