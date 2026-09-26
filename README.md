@@ -54,5 +54,5 @@ install, uvicorn on port 8080 as the dev server).
 - ✅ **Step 2 pharmacophore extraction live** → `app/pharmacophore.py`: 6 feature families (SMARTS), 3D embedding + inter-feature distances, highlighted depiction, and a feature-signature similarity score ready for Step 3 filtering
 - ✅ **Step 3 generation live** → `app/generator.py` + `app/scoring.py`: REINVENT4 (CPU, `reinvent_pubchem.prior` from Zenodo) invents ~100 valid molecules in seconds, each scored against the reference pattern (60% signature match / 25% QED / 15% Lipinski, geometric mean) and ranked in the UI
 - ✅ **Step 4 buildability live** → `app/aizynth_worker.py` + `app/buildability.py`: AiZynthFinder retrosynthesis in a worker subprocess (ONNX USPTO models + 11 MB molbloom ZINC filter — light enough for 1.9 GB RAM), returns makeable ✓/✗, route score, step count, and purchasable building blocks; UI badge per candidate
-- ⬜ Step 5: combined ranked report view (currently: Step 3 cards + Step 4 badges)
-- ⬜ Optional upgrades: full ZINC stock on a bigger machine, 3D pharmacophore scoring in REINVENT, RL fine-tuning runs
+- ✅ **Step 5 full pipeline report live** → one-click "Run whole pipeline": invent 100 → rank → check top 5 makeability → final ranked winners table with building blocks and CSV export
+- 🏁 **The original 5-step plan is complete.** Optional upgrades: full ZINC stock on a bigger machine, 3D pharmacophore scoring in REINVENT, RL fine-tuning runs

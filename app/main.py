@@ -143,8 +143,8 @@ class BuildabilityRequest(BaseModel):
 def buildability(req: BuildabilityRequest) -> JSONResponse:
     """Step 4: retrosynthesis check — can these molecules actually be made?
 
-    Each check takes ~15-20 s (tree search against reaction rules), so keep
-    the batch small; we cap it at 10 molecules.
+    Each check takes ~8-10 s (tree search against reaction rules on a single
+    CPU); we cap the batch at 10 molecules.
     """
     canonical: list[str] = []
     for smi in req.smiles[:10]:

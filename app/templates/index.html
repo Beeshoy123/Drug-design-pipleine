@@ -88,6 +88,13 @@
     .rcard .score { font-size: 15px; font-weight: 700; color: var(--accent); margin: 6px 0 2px; }
     .rcard .sub { font-size: 11px; color: var(--muted); line-height: 1.5; }
     .rcard .smi { font-size: 10px; color: var(--accent2); font-family: ui-monospace, monospace; word-break: break-all; margin-top: 4px; }
+    .report-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 14px; }
+    .report-table th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); padding: 8px 6px; border-bottom: 2px solid var(--line); }
+    .report-table td { padding: 8px 6px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+    .report-table .struct svg { width: 74px; height: auto; vertical-align: middle; }
+    .rank1 { color: var(--accent); font-weight: 700; }
+    .win { background: #14532d33; border-radius: 6px; padding: 2px 8px; }
+
     .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--muted); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -2px; }
     @keyframes spin { to { transform: rotate(360deg); } }
   </style>
@@ -144,7 +151,7 @@
       </p>
       <div class="row">
         <button class="primary" id="gen">🍳 Invent 100 molecules</button>
-        <button class="primary" id="check" style="background:var(--accent2);color:#08213d">🛒 Check top 5 buildability</button>
+        <button class="primary" id="check" style="background:var(--accent2);color:#08213d">🛒 Check top 6 buildability</button>
         <span class="dists" id="gen-status" style="align-self:center"></span>
       </div>
       <div class="error" id="gen-error"></div>
@@ -152,8 +159,26 @@
       <div id="results"></div>
     </div>
 
+    <div class="card" style="margin-top: 24px">
+      <div class="badge" style="margin-bottom:10px">Step 5 · Full Pipeline Report</div>
+      <h2 style="margin:0 0 8px;font-size:18px">One-click: invent → score → check buildability → rank</h2>
+      <p style="margin:0 0 14px;color:var(--muted);font-size:13.5px;line-height:1.6">
+        Runs every step on the reference molecule: REINVENT4 invents 100 candidates, the judge ranks them,
+        the shopping checker verifies the top ones are actually makeable, and the final report keeps only
+        the winners — <strong>makeable + best-scoring</strong> — as a ranked table you can download as CSV.
+        Takes about 1–2 minutes on this little machine.
+      </p>
+      <div class="row">
+        <button class="primary" id="pipeline" style="background:linear-gradient(90deg,var(--accent),var(--accent2));color:#06220f">🚀 Run whole pipeline</button>
+        <span class="dists" id="pipe-status" style="align-self:center"></span>
+      </div>
+      <div class="error" id="pipe-error"></div>
+      <div class="dists" id="pipe-log" style="margin-top:10px"></div>
+      <div id="report"></div>
+    </div>
+
     <footer>
-      Pipeline: RDKit pharmacophores → REINVENT4 generation (this page) → AiZynthFinder buildability → ranked report
+      Pipeline: RDKit pharmacophores → REINVENT4 generation → AiZynthFinder buildability → ranked report (this page does it all)
     </footer>
   </div>
 
@@ -280,11 +305,12 @@
     let lastResults = [];
 
     function card(r, rank) {
-      return `<div class="rcard" id="rcard-${rank}">${r.svg}
-        <div class="score">#${rank} · score ${r.score.toFixed(3)}</div>
+      const n = rank + 1;  // badges and ranks are 1-based everywhere
+      return `<div class="rcard" id="rcard-${n}">${r.svg}
+        <div class="score">#${n} · score ${r.score.toFixed(3)}</div>
         <div class="sub">pattern ${(r.sig_sim * 100).toFixed(0)}% · QED ${r.qed.toFixed(2)} · Lipinski ${r.lipinski.toFixed(2)} · ${r.props.molecular_weight} g/mol</div>
         <div class="smi">${r.smiles}</div>
-        <div class="build-badge" id="badge-${rank}" style="margin-top:6px;font-size:11px;color:var(--muted)">—</div>
+        <div class="build-badge" id="badge-${n}" style="margin-top:6px;font-size:11px;color:var(--muted)">—</div>
       </div>`;
     }
 
@@ -292,28 +318,30 @@
       if (!lastResults.length) return;
       checkBtn.disabled = true;
       checkError.textContent = "";
-      const targets = lastResults.slice(0, 5);  // ~20 s each — keep the batch small
-      targets.forEach((r, i) => { $(`badge-${i + 1}`).innerHTML = '<span class="spinner"></span> checking…'; });
+      const targets = lastResults.slice(0, 6);  // ~9 s per check, badges flip one by one
       try {
         for (let i = 0; i < targets.length; i++) {
-          const res = await fetch("/api/buildability", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ smiles: [targets[i].smiles] }),
-          });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.detail || "Buildability check failed");
-          const r = data.results[0];
           const badge = $(`badge-${i + 1}`);
-          if (r.error) { badge.textContent = `⚠ ${r.error}`; continue; }
-          if (r.buildable) {
-            badge.innerHTML = `<span class="ok">✓ makeable · ${r.n_steps} step${r.n_steps === 1 ? "" : "s"} · route score ${r.score}</span>`;
-          } else {
-            badge.innerHTML = `<span class="warn">✗ no route found</span>`;
+          badge.innerHTML = '<span class="spinner"></span> checking…';
+          try {
+            const res = await fetch("/api/buildability", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ smiles: [targets[i].smiles] }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || "Buildability check failed");
+            const r = data.results[0];
+            if (r.error) { badge.textContent = `⚠ ${r.error}`; continue; }
+            if (r.buildable) {
+              badge.innerHTML = `<span class="ok">✓ makeable · ${r.n_steps} step${r.n_steps === 1 ? "" : "s"} · route score ${r.score}</span>`;
+            } else {
+              badge.innerHTML = `<span class="warn">✗ no route found</span>`;
+            }
+          } catch (e) {
+            badge.textContent = `⚠ ${e.message}`;
           }
         }
-      } catch (e) {
-        checkError.textContent = e.message;
       } finally {
         checkBtn.disabled = false;
       }
@@ -344,6 +372,92 @@
     checkBtn.addEventListener("click", checkBuildable);
 
     const initial = new URLSearchParams(location.search).get("smiles");
+
+    const pipeBtn = $("pipeline"), pipeStatus = $("pipe-status"), pipeError = $("pipe-error"), pipeLog = $("pipe-log"), reportBox = $("report");
+    const pipeStep = (msg) => { pipeLog.innerHTML += msg + "<br>"; };
+
+    function downloadCSV(rows) {
+      const header = ["rank", "smiles", "score", "pattern_match", "qed", "lipinski", "makeable", "steps", "route_score", "building_blocks"];
+      const lines = rows.map((r, i) =>
+        [i + 1, r.smiles, r.score.toFixed(4), r.sig_sim, r.qed, r.lipinski,
+         r.build ? "yes" : "no", r.steps ?? "", r.route_score ?? "",
+         `"${(r.blocks || []).join("; ")}"`].join(","));
+      const blob = new Blob([header.join(",") + "\n" + lines.join("\n")], { type: "text/csv" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "pipeline_report.csv";
+      a.click();
+    }
+
+    pipeBtn.addEventListener("click", async () => {
+      const ref = input.value.trim();
+      if (!ref) { pipeError.textContent = "Enter a reference molecule above first."; return; }
+      pipeBtn.disabled = true;
+      pipeError.textContent = "";
+      pipeLog.innerHTML = "";
+      reportBox.innerHTML = "";
+      pipeStatus.innerHTML = '<span class="spinner"></span> pipeline running…';
+      const winners = [];
+      try {
+        pipeStep("1️⃣ the AI chef is inventing 100 molecules…");
+        const genRes = await fetch(`/api/generate?reference=${encodeURIComponent(ref)}&num=100&top=12`);
+        const gen = await genRes.json();
+        if (!genRes.ok) throw new Error(gen.detail || "generation failed");
+        pipeStep(`&nbsp;&nbsp;✓ ${gen.generated} valid inventions · best score ${gen.candidates[0].score}`);
+
+        pipeStep("2️⃣ the shopping checker verifies the top 5 (~9 s each)…");
+        const top5 = gen.candidates.slice(0, 5);
+        for (let i = 0; i < top5.length; i++) {
+          const res = await fetch("/api/buildability", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ smiles: [top5[i].smiles] }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.detail || "buildability failed");
+          const r = data.results[0];
+          if (!r.error && r.buildable) {
+            winners.push({ ...top5[i], build: true, steps: r.n_steps, route_score: r.score, blocks: r.building_blocks });
+            pipeStep(`&nbsp;&nbsp;✓ #${i + 1} is makeable (${r.n_steps} step${r.n_steps === 1 ? "" : "s"})`);
+          } else if (!r.error) {
+            pipeStep(`&nbsp;&nbsp;✗ #${i + 1} — no route found, thrown out`);
+          } else {
+            pipeStep(`&nbsp;&nbsp;⚠ #${i + 1} — ${r.error}`);
+          }
+        }
+
+        if (!winners.length) {
+          pipeStep("😕 no makeable molecules this round — press Run again (invention is stochastic)");
+          pipeStatus.textContent = "";
+          return;
+        }
+        winners.sort((a, b) => b.score - a.score);
+        pipeStep(`3️⃣ final report: ${winners.length} makeable winner${winners.length === 1 ? "" : "s"} 🏆`);
+
+        const rows = winners.map((w, i) => `
+          <tr>
+            <td class="rank1">#${i + 1}</td>
+            <td class="struct">${w.svg}</td>
+            <td>${w.score.toFixed(3)}<br><span style="color:var(--muted);font-size:11px">pattern ${(w.sig_sim * 100).toFixed(0)}% · QED ${w.qed.toFixed(2)} · Lip ${w.lipinski.toFixed(2)}</span></td>
+            <td><span class="win ok">✓ ${w.steps} step${w.steps === 1 ? "" : "s"}</span><br><span style="color:var(--muted);font-size:11px">route ${w.route_score}</span></td>
+            <td style="font-size:10px;color:var(--accent2);word-break:break-all;max-width:220px">${w.smiles}<br><span style="color:var(--muted)">blocks: ${(w.blocks || []).join("; ")}</span></td>
+          </tr>`).join("");
+        reportBox.innerHTML = `
+          <table class="report-table">
+            <tr><th>Rank</th><th>Molecule</th><th>Pipeline score</th><th>Buildability</th><th>SMILES &amp; building blocks</th></tr>
+            ${rows}
+          </table>
+          <button class="primary" id="csv" style="margin-top:12px">⬇️ Download report (CSV)</button>`;
+        $("csv").addEventListener("click", () => downloadCSV(winners));
+        pipeStatus.textContent = "done 🏁";
+      } catch (e) {
+        pipeError.textContent = e.message;
+        pipeStatus.textContent = "";
+      } finally {
+        pipeBtn.disabled = false;
+      }
+    });
+
     if (initial) { input.value = initial; preview(initial); }
     else { preview("CC(=O)OC1=CC=CC=C1C(=O)O"); }
   </script>

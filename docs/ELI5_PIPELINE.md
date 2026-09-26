@@ -225,6 +225,12 @@ pictures by itself, so the "pretty preview" part is easy without GenUI.
 
 ---
 
+## 🏁 The Plan Is Built!
+
+All 5 steps work end-to-end in the web app — type a molecule, press
+"🚀 Run whole pipeline", and about a minute later you get a ranked report
+of the best, actually-makeable invented molecules (with CSV download).
+
 ## What's Installed So Far
 
 - ✅ REINVENT4 cloned to `tools/REINVENT4` (v4.8.24) — see `tools/README.md`

@@ -19,7 +19,7 @@ import json
 import sys
 
 CONFIG = "runs/aizynth_data/config.yml"
-EXPANSION_TIME = 20  # seconds per molecule
+EXPANSION_TIME = 8  # seconds per molecule (top routes are found early)
 
 
 def main() -> None:
