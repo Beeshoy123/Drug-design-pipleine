@@ -182,6 +182,29 @@
     .rank1 { color: var(--purple); font-weight: 800; }
     .win { background: #dcfce7; color: var(--good); border-radius: 999px; padding: 3px 10px; font-weight: 700; font-size: 12px; display: inline-block; }
 
+    /* ---------- retrosynthesis route ---------- */
+    .route-steps { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 8px; }
+    .route-steps h4 { margin: 0 0 6px; font-size: 10px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--muted); }
+    .route-step { display: flex; gap: 8px; margin-bottom: 6px; font-size: 11px; line-height: 1.5; align-items: flex-start; }
+    .route-n { flex: 0 0 auto; background: #efeffa; color: var(--purple); font-weight: 700; border-radius: 999px; padding: 2px 8px; font-size: 10px; }
+    .route-body b { color: var(--navy); font-family: ui-monospace, monospace; font-size: 10.5px; word-break: break-all; }
+    .route-body div { color: var(--muted); }
+    .stock-ok, .stock-no { font-family: ui-monospace, monospace; font-size: 10.5px; word-break: break-all; }
+    .stock-ok { color: var(--good); }
+    .stock-no { color: var(--bad); }
+
+    /* ---------- print / PDF export: only the report ---------- */
+    @media print {
+      body { background: #fff; }
+      .topbar, .hero, .stats, .stepper, .wiz-nav, .examples, .pill, footer,
+      .error, #gen-status, #check-error, #pipe-status, #pipe-log { display: none !important; }
+      .card { box-shadow: none; border: 1px solid var(--line); }
+      .card.navy { background: #fff; color: var(--ink); }
+      #report { padding: 0 !important; }
+      .rcard, .report-table tr { break-inside: avoid; }
+      .route-n { border: 1px solid var(--line); }
+    }
+
     .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid #b9bde0; border-top-color: var(--purple); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -2px; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -587,7 +610,9 @@
             const r = data.results[0];
             if (r.error) { badge.textContent = `⚠ ${r.error}`; continue; }
             if (r.buildable) {
-              badge.innerHTML = `<span class="ok">✓ makeable · ${r.n_steps} step${r.n_steps === 1 ? "" : "s"} · route score ${r.score}</span>`;
+              const tip = routeTip(r.route);
+              badge.innerHTML = `<span class="ok">✓ makeable · ${r.n_steps} step${r.n_steps === 1 ? "" : "s"} · route score ${r.score}</span>`
+                + (tip ? ` <span style="color:var(--muted);cursor:help" title="${tip}">ⓘ route</span>` : "");
             } else {
               badge.innerHTML = `<span class="warn">✗ no route found</span>`;
             }
@@ -640,9 +665,45 @@
          `"${(r.blocks || []).join("; ")}"`].join(","));
       const blob = new Blob([header.join(",") + "\n" + lines.join("\n")], { type: "text/csv" });
       const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = "pipeline_report.csv";
-      a.click();
+      a.href = URL.createObjectURL(blob);        a.download = "pipeline_report.csv";
+        a.click();
+    }
+
+    // ---------- retrosynthesis route rendering ----------
+    function routeHTML(route) {
+      if (!route || !route.length) return "";
+      return `<div class="route-steps"><h4>Route · building blocks → target</h4>`
+        + route.map((s) => `
+          <div class="route-step">
+            <span class="route-n">${s.label}</span>
+            <div class="route-body">
+              <b>${s.product}</b>
+              <div>← ${s.precursors.map((p) =>
+                `<span class="${p.in_stock ? "stock-ok" : "stock-no"}">${p.smiles}${p.in_stock ? " ✓" : " ✗ not in stock"}</span>`
+              ).join(" + ")}</div>
+            </div>
+          </div>`).join("")
+        + `</div>`;
+    }
+
+    function routeTip(route) {
+      // one-line-per-step version for the small ⓘ hover on candidate cards
+      return (route || [])
+        .map((s) => `${s.label}: ${s.product}  ←  ${s.precursors.map((p) => p.smiles).join(" + ")}`)
+        .join("\n").replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+    }
+
+    function downloadPDF(rows) {
+      // PDF via the browser's print-to-PDF: the @media print CSS hides
+      // everything except the report table, so "Save as PDF" in the print
+      // dialog produces a clean one-page-per-run report (structures included).
+      const prev = document.title;
+      document.title = "pipeline_report";
+      const st = $("pdf-status");
+      if (st) st.textContent = "choose “Save as PDF” in the dialog that opens";
+      window.print();
+      if (st) st.textContent = "";
+      document.title = prev;
     }
 
     pipeBtn.addEventListener("click", async () => {
@@ -673,7 +734,7 @@
           if (!res.ok) throw new Error(data.detail || "buildability failed");
           const r = data.results[0];
           if (!r.error && r.buildable) {
-            winners.push({ ...top5[i], build: true, steps: r.n_steps, route_score: r.score, blocks: r.building_blocks });
+            winners.push({ ...top5[i], build: true, steps: r.n_steps, route_score: r.score, blocks: r.building_blocks, route: r.route || [] });
             pipeStep(`&nbsp;&nbsp;✓ #${i + 1} is makeable (${r.n_steps} step${r.n_steps === 1 ? "" : "s"})`);
           } else if (!r.error) {
             pipeStep(`&nbsp;&nbsp;✗ #${i + 1} — no route found, thrown out`);
@@ -696,15 +757,20 @@
             <td class="struct">${w.svg}</td>
             <td>${w.score.toFixed(3)}<br><span style="color:var(--muted);font-size:11px">pattern ${(w.sig_sim * 100).toFixed(0)}% · QED ${w.qed.toFixed(2)} · Lip ${w.lipinski.toFixed(2)}</span></td>
             <td><span class="win">✓ ${w.steps} step${w.steps === 1 ? "" : "s"}</span><br><span style="color:var(--muted);font-size:11px">route ${w.route_score}</span></td>
-            <td style="font-size:10px;color:var(--navy);word-break:break-all;max-width:220px">${w.smiles}<br><span style="color:var(--muted)">blocks: ${(w.blocks || []).join("; ")}</span></td>
+            <td style="font-size:10px;color:var(--navy);word-break:break-all;max-width:300px">${w.smiles}<br><span style="color:var(--muted)">blocks: ${(w.blocks || []).join("; ")}</span>${routeHTML(w.route)}</td>
           </tr>`).join("");
         reportBox.innerHTML = `
           <table class="report-table">
-            <tr><th>Rank</th><th>Molecule</th><th>Pipeline score</th><th>Buildability</th><th>SMILES &amp; building blocks</th></tr>
+            <tr><th>Rank</th><th>Molecule</th><th>Pipeline score</th><th>Buildability</th><th>SMILES, blocks &amp; route</th></tr>
             ${rows}
           </table>
-          <button class="pill pill-purple" id="csv" style="margin-top:12px">⬇️ Download report (CSV)</button>`;
+          <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+            <button class="pill pill-purple" id="csv">⬇️ Download CSV</button>
+            <button class="pill pill-navy" id="pdf">📄 Download PDF</button>
+            <span class="dists" id="pdf-status" style="color:var(--muted)"></span>
+          </div>`;
         $("csv").addEventListener("click", () => downloadCSV(winners));
+        $("pdf").addEventListener("click", () => downloadPDF(winners));
         pipeStatus.textContent = "done 🏁";
       } catch (e) {
         pipeError.textContent = e.message;

@@ -22,6 +22,51 @@ CONFIG = "runs/aizynth_data/config.yml"
 EXPANSION_TIME = 8  # seconds per molecule (top routes are found early)
 
 
+def _route_steps(tree: dict) -> list[dict]:
+    """Flatten the reaction tree into ordered synthesis steps.
+
+    ``to_dict()`` gives a retrosynthesis tree: mol nodes (``type: "mol"``)
+    hold reaction children, and each reaction node (``is_reaction: True``)
+    holds its precursor mol nodes — the reaction's own ``smiles`` is the raw
+    mapped SMARTS, not the product. So we walk mol → its disconnection → its
+    precursors, carrying the mol SMILES down as the step's product, then
+    reverse: depth-first finds the final disconnection first, and we report
+    bench order (building blocks first, target last). Each step is
+    "{label}: make {product} from precursors (in stock or not)".
+    """
+    steps: list[dict] = []
+
+    def visit_mol(node: dict) -> None:
+        product = node.get("smiles", "")
+        for rxn in node.get("children", []):
+            if not rxn.get("is_reaction"):
+                continue
+            mols = [c for c in rxn.get("children", []) if c.get("type") == "mol"]
+            steps.append(
+                {
+                    "product": product,
+                    "template": (rxn.get("metadata") or {}).get("template_code")
+                    or (rxn.get("metadata") or {}).get("name")
+                    or "",
+                    "precursors": [
+                        {"smiles": c.get("smiles", ""), "in_stock": bool(c.get("in_stock"))}
+                        for c in mols
+                    ],
+                }
+            )
+            for c in mols:  # deeper disconnections hang below the precursors
+                visit_mol(c)
+
+    if tree.get("type") == "mol":
+        visit_mol(tree)
+    steps.reverse()  # found target-first; flip to synthesis order
+    n = len(steps)
+    for i, step in enumerate(steps):
+        step["index"] = i + 1
+        step["label"] = f"step {i + 1} of {n}"
+    return steps[:8]
+
+
 def main() -> None:
     from aizynthfinder.aizynthfinder import AiZynthFinder
 
@@ -64,6 +109,7 @@ def main() -> None:
                         "n_steps": None,
                         "building_blocks": [],
                         "score": None,
+                        "route": [],
                     }
                 )
                 continue
@@ -90,6 +136,7 @@ def main() -> None:
                     "n_steps": stats["reactions"],
                     "building_blocks": sorted(stats["blocks"])[:6],
                     "score": round(float(next(iter(score.values()))), 3) if score else None,
+                    "route": _route_steps(tree),
                 }
             )
         except Exception as err:  # noqa: BLE001 — worker must survive any molecule
